@@ -13,7 +13,7 @@
 static int xmp_getattr(const char *path, struct stat *stbuf)
 {
     char full_path[PATH_MAX];
-    sprintf(full_path, "/home/shittim/Sisop4/portofolio/%s", path);
+    snprintf(full_path, sizeof(full_path), "/home/shittim/Sisop4/portofolio/%s", path);
     int res = lstat(full_path, stbuf);
     if (res == -1) return -errno;
     return 0;
@@ -22,7 +22,7 @@ static int xmp_getattr(const char *path, struct stat *stbuf)
 static int xmp_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi)
 {
     char full_path[PATH_MAX];
-    sprintf(full_path, "/home/shittim/Sisop4/portofolio/%s", path);
+    snprintf(full_path, sizeof(full_path), "/home/shittim/Sisop4/portofolio/%s", path);
     DIR *dp;
     struct dirent *de;
     (void) offset;
@@ -45,7 +45,7 @@ static int xmp_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_
 static int xmp_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {
     char full_path[PATH_MAX];
-    sprintf(full_path, "/home/shittim/Sisop4/portofolio/%s", path);
+    snprintf(full_path, sizeof(full_path), "/home/shittim/Sisop4/portofolio/%s", path);
     int fd;
     int res;
     (void) fi;
@@ -53,26 +53,61 @@ static int xmp_read(const char *path, char *buf, size_t size, off_t offset, stru
     fd = open(full_path, O_RDONLY);
     if (fd == -1) return -errno;
 
-    res = pread(fd, buf, size, offset);
-    if (res == -1) res = -errno;
+    const char *filename = strrchr(path, '/') ? strrchr(path, '/') + 1 : path;
+    if (strstr(filename, "test") == filename && strstr(filename, ".txt") == filename + strlen(filename) - 4) {
+        char *file_buf = malloc(size);
+        if (file_buf == NULL) {
+            close(fd);
+            return -ENOMEM;
+        }
 
-    close(fd);
-    return res;
+        res = pread(fd, file_buf, size, 0);
+        if (res == -1) {
+            free(file_buf);
+            close(fd);
+            return -errno;
+        }
+
+        size_t file_size = res;
+        for (size_t i = 0; i < file_size; ++i) {
+            buf[i] = file_buf[file_size - 1 - i];
+        }
+
+        if (file_size > size) {
+            file_size = size;
+        }
+
+        free(file_buf);
+        close(fd);
+        return file_size;
+    } else {
+        // Regular read for other files
+        res = pread(fd, buf, size, offset);
+        if (res == -1) res = -errno;
+
+        close(fd);
+        return res;
+    }
 }
 
 int add_watermark(const char *filepath)
 {
     char command[1024];
-    snprintf(command, sizeof(command), "convert '%s' -gravity South -pointsize 140 -fill white -annotate +0+100 'inikaryakita.id' '%s'", filepath, filepath);
-    return system(command);
+    snprintf(command, sizeof(command), "convert '%s' -gravity South -pointsize 80 -fill white -annotate +0+100 'inikaryakita.id' '%s'", filepath, filepath);
+    int res = system(command);
+    if (res != 0) {
+        fprintf(stderr, "Error adding watermark to file: %s\n", filepath);
+        return -1;
+    }
+    return 0;
 }
 
 static int xmp_rename(const char *from, const char *to)
 {
     char full_from[PATH_MAX];
     char full_to[PATH_MAX];
-    sprintf(full_from, "/home/shittim/Sisop4/portofolio/%s", from);
-    sprintf(full_to, "/home/shittim/Sisop4/portofolio/%s", to);
+    snprintf(full_from, sizeof(full_from), "/home/shittim/Sisop4/portofolio/%s", from);
+    snprintf(full_to, sizeof(full_to), "/home/shittim/Sisop4/portofolio/%s", to);
     int res;
 
     // Check if the target directory has the prefix "wm."
@@ -94,7 +129,7 @@ static int xmp_rename(const char *from, const char *to)
 static int xmp_mkdir(const char *path, mode_t mode)
 {
     char full_path[PATH_MAX];
-    sprintf(full_path, "/home/shittim/Sisop4/portofolio/%s", path);
+    snprintf(full_path, sizeof(full_path), "/home/shittim/Sisop4/portofolio/%s", path);
     int res;
     res = mkdir(full_path, mode);
     if (res == -1) return -errno;
@@ -104,7 +139,7 @@ static int xmp_mkdir(const char *path, mode_t mode)
 static int xmp_unlink(const char *path)
 {
     char full_path[PATH_MAX];
-    sprintf(full_path, "/home/shittim/Sisop4/portofolio/%s", path);
+    snprintf(full_path, sizeof(full_path), "/home/shittim/Sisop4/portofolio/%s", path);
     int res;
     res = unlink(full_path);
     if (res == -1) return -errno;
@@ -114,7 +149,7 @@ static int xmp_unlink(const char *path)
 static int xmp_rmdir(const char *path)
 {
     char full_path[PATH_MAX];
-    sprintf(full_path, "/home/shittim/Sisop4/portofolio/%s", path);
+    snprintf(full_path, sizeof(full_path), "/home/shittim/Sisop4/portofolio/%s", path);
     int res;
     res = rmdir(full_path);
     if (res == -1) return -errno;
@@ -124,7 +159,7 @@ static int xmp_rmdir(const char *path)
 static int xmp_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 {
     char full_path[PATH_MAX];
-    sprintf(full_path, "/home/shittim/Sisop4/portofolio/%s", path);
+    snprintf(full_path, sizeof(full_path), "/home/shittim/Sisop4/portofolio/%s", path);
     int fd;
     fd = open(full_path, fi->flags, mode);
     if (fd == -1) return -errno;
