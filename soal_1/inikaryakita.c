@@ -53,8 +53,10 @@ static int xmp_read(const char *path, char *buf, size_t size, off_t offset, stru
     fd = open(full_path, O_RDONLY);
     if (fd == -1) return -errno;
 
+    // Check if the file has the prefix "test" and the extension ".txt"
     const char *filename = strrchr(path, '/') ? strrchr(path, '/') + 1 : path;
     if (strstr(filename, "test") == filename && strstr(filename, ".txt") == filename + strlen(filename) - 4) {
+        // Read the entire file content
         char *file_buf = malloc(size);
         if (file_buf == NULL) {
             close(fd);
@@ -68,11 +70,13 @@ static int xmp_read(const char *path, char *buf, size_t size, off_t offset, stru
             return -errno;
         }
 
+        // Reverse the content
         size_t file_size = res;
         for (size_t i = 0; i < file_size; ++i) {
             buf[i] = file_buf[file_size - 1 - i];
         }
 
+        // Adjust the size of the read content to match the requested size
         if (file_size > size) {
             file_size = size;
         }
@@ -111,7 +115,7 @@ static int xmp_rename(const char *from, const char *to)
     int res;
 
     // Check if the target directory has the prefix "wm."
-    if (strstr(to, "wm.") != NULL) {
+    if (strstr(to, "wm") != NULL) {
         // Rename (move) the file
         res = rename(full_from, full_to);
         if (res == -1) return -errno;
@@ -175,6 +179,16 @@ static int xmp_write(const char *path, const char *buf, size_t size, off_t offse
     return res;
 }
 
+static int xmp_chmod(const char *path, mode_t mode)
+{
+    char full_path[PATH_MAX];
+    snprintf(full_path, sizeof(full_path), "/home/shittim/Sisop4/portofolio/%s", path);
+    int res;
+    res = chmod(full_path, mode);
+    if (res == -1) return -errno;
+    return 0;
+}
+
 static struct fuse_operations xmp_oper = {
     .getattr = xmp_getattr,
     .readdir = xmp_readdir,
@@ -185,6 +199,7 @@ static struct fuse_operations xmp_oper = {
     .rmdir = xmp_rmdir,
     .create = xmp_create,
     .write = xmp_write,
+    .chmod = xmp_chmod,
 };
 
 int main(int argc, char *argv[])
