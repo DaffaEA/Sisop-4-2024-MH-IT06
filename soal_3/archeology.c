@@ -11,10 +11,10 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-// Deklarasi untuk asprintf
+
 int asprintf(char **strp, const char *fmt, ...);
 
-static const char *root_path = "/home/maximumyeet/tugas/modul4/relics/discoveries/relics"; // Ganti dengan path sebenarnya
+static const char *root_path = "/home/maximumyeet/tugas/modul4/relics/discoveries/relics";
 
 static int relics_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi) {
     (void) offset;
@@ -131,7 +131,7 @@ static int relics_read(const char *path, char *buf, size_t size, off_t offset, s
         free(part_path);
 
         if (read_size < to_read) {
-            break; // End of file reached or read error
+            break;
         }
     }
 
