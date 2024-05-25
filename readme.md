@@ -1,5 +1,15 @@
 # Sisop-4-2024-MH-IT06
 
+# Laporan Resmi Praktikum Sistem Operasi Modul 4
+
+Kelompok IT-06:
+
+-Daffa Rajendra Priyatama 5027231009
+
+-Nicholas Arya Krisnugroho Rerangin 5027231058
+
+-Johanes Edward Nathanael 5027231067
+
 ## Soal 1
 ## inikaryakita.c
 ```c
