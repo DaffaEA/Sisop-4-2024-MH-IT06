@@ -278,6 +278,167 @@ int main(int argc, char *argv[])
 }
 ```
 - Fungsi ini mengatur mask izin file dan kemudian memanggil fuse_main untuk menjalankan sistem berkas FUSE dengan operasi yang telah ditentukan.
+## Soal 2
+## pastibisa.c
+Pada folder "pesan" Adfi ingin meningkatkan kemampuan sistemnya dalam mengelola berkas-berkas teks dengan menggunakan fuse.
+- Jika sebuah file memiliki prefix "base64," maka sistem akan langsung mendekode isi file tersebut dengan algoritma Base64.
+- Jika sebuah file memiliki prefix "rot13," maka isi file tersebut akan langsung di-decode dengan algoritma ROT13.
+- Jika sebuah file memiliki prefix "hex," maka isi file tersebut akan langsung di-decode dari representasi heksadesimalnya.
+- Jika sebuah file memiliki prefix "rev," maka isi file tersebut akan langsung di-decode dengan cara membalikkan teksnya.
+
+Untuk soal ini, saya membuat sebuah function untuk mendekripsi pesan berdasarkan nama file yang diambil dari pathnya
+```c
+static void decrypt_file_content(const char *path, char *buf, size_t size) {
+    char *filename = strrchr(path, '/');
+    if (filename != NULL) {
+        filename++;
+        if (strstr(filename, "base64") != NULL) {
+            // Implementasi manual untuk decode Base64
+            const char *base64_chars = 
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                "abcdefghijklmnopqrstuvwxyz"
+                "0123456789+/";
+            int in_len = size;
+            int i = 0, j = 0;
+            int in_ = 0;
+            unsigned char char_array_4[4], char_array_3[3];
+
+            while (in_len-- && (buf[in_] != '=') && isalnum(buf[in_])) {
+                char_array_4[i++] = buf[in_]; in_++;
+                if (i == 4) {
+                    for (i = 0; i < 4; i++)
+                        char_array_4[i] = strchr(base64_chars, char_array_4[i]) - base64_chars;
+
+                    char_array_3[0] = (char_array_4[0] << 2) + ((char_array_4[1] & 0x30) >> 4);
+                    char_array_3[1] = ((char_array_4[1] & 0xf) << 4) + ((char_array_4[2] & 0x3c) >> 2);
+                    char_array_3[2] = ((char_array_4[2] & 0x3) << 6) + char_array_4[3];
+
+                    for (i = 0; (i < 3); i++)
+                        buf[j++] = char_array_3[i];
+                    i = 0;
+                }
+            }
+
+            if (i) {
+                for (int k = i; k < 4; k++)
+                    char_array_4[k] = 0;
+
+                for (int k = 0; k < 4; k++)
+                    char_array_4[k] = strchr(base64_chars, char_array_4[k]) - base64_chars;
+
+                char_array_3[0] = (char_array_4[0] << 2) + ((char_array_4[1] & 0x30) >> 4);
+                char_array_3[1] = ((char_array_4[1] & 0xf) << 4) + ((char_array_4[2] & 0x3c) >> 2);
+                char_array_3[2] = ((char_array_4[2] & 0x3) << 6) + char_array_4[3];
+
+                for (int k = 0; (k < i - 1); k++)
+                    buf[j++] = char_array_3[k];
+            }
+            buf[j] = '\0';
+        } else if (strstr(filename, "rot13") != NULL) {
+            for (size_t i =        0; i < size; i++) {
+                if (isalpha(buf[i])) {
+                    if (islower(buf[i])) {
+                        buf[i] = 'a' + (buf[i] - 'a' + 13) % 26;
+                    } else {
+                        buf[i] = 'A' + (buf[i] - 'A' + 13) % 26;
+                    }
+                }
+            }
+        } else if (strstr(filename, "hex") != NULL) {
+            size_t decoded_size = size / 2;
+            char *decoded_text = (char *)malloc(decoded_size);
+            for (size_t i = 0, j = 0; i < size; i += 2, j++) {
+                sscanf(&buf[i], "%2hhx", &decoded_text[j]);
+            }
+            memcpy(buf, decoded_text, decoded_size);
+            buf[decoded_size] = '\0';
+            free(decoded_text);
+        } else if (strstr(filename, "rev") != NULL) {
+            size_t len = strlen(buf);
+            for (size_t i = 0; i < len / 2; i++) {
+                char temp = buf[i];
+                buf[i] = buf[len - i - 1];
+                buf[len - i - 1] = temp;
+            }
+        }
+    }
+}
+```
+
+Di sini, setiap file akan didekripsi menurut algoritmanya masing-masing. Lalu, untuk pemanggilan fungsinya saya lakukan di function read agar dapat dieksekusi ketika melakukan `cat` untuk membaca isi file txt.
+```c
+static int read_eazy(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
+    char fpath[1000];
+    sprintf(fpath, "%s%s", dirpath, path);
+    int fd = open(fpath, O_RDONLY);
+    if (fd == -1)
+        return -errno;
+
+    int res = pread(fd, buf, size, offset);
+    if (res == -1) {
+        close(fd);
+        return -errno;
+    }
+
+    if (strstr(path, "base64") != NULL || strstr(path, "rot13") != NULL || strstr(path, "hex") != NULL || strstr(path, "rev") != NULL) {
+        decrypt_file_content(path, buf, res);
+    }
+
+    close(fd);
+    return res;
+}
+```
+Pada folder “rahasia-berkas”, Adfi dan timnya memutuskan untuk menerapkan kebijakan khusus. Mereka ingin memastikan bahwa folder dengan prefix "rahasia" tidak dapat diakses tanpa izin khusus. 
+Jika seseorang ingin mengakses folder dan file pada “rahasia”, mereka harus memasukkan sebuah password terlebih dahulu (password bebas).
+Selanjutnya, untuk bagian ini saya membuat sebuah function yang akan melakukan printf perintah permintaan password dan scanf untuk mengambil input pengguna, yang apabila password yang dimasukkan salah maka akses akan ditolak.
+```c
+int check_password(const char *path) {
+    if (!password_entered) {
+        char input_password[100];
+        printf("Masukkan kata sandi: ");
+        scanf("%99s", input_password);
+        if (strcmp(input_password, secret_password) != 0) {
+            printf("Kata sandi salah. Akses ditolak.\n");
+            buatLog("FAILED", "access", path);
+            return 0;
+        }
+        password_entered = 1;
+        buatLog("SUCCESS", "access", path);
+    }
+    return 1;
+}
+```
+Untuk function ini sendiri saya buat pemanggilannya di dalam function `readdir` dan `open` yang akan menghasilkan pemanggilan password ketika pengguna ingin melakukan `ls` di dalam folder "rahasia" dan membuka file apapun di dalamnya.
+Sebagai tambahan, agar bisa melakukan printf dan scanf maka program fuse ini diharuskan berjalan di foreground dengan menggunakan command `./pastibisa -f /path/to/fuse/folder` sehingga program dapat melakukan stdin dan stdout. Sementara itu untuk mengakses folder fuse bisa dilakukan dari terminal lain yang dibuka bersamaan.
+
+Setiap proses yang dilakukan akan tercatat pada logs-fuse.log dengan format :
+[SUCCESS/FAILED]::dd/mm/yyyy-hh:mm:ss::[tag]::[information]
+Ex:
+[SUCCESS]::01/11/2023-10:43:43::[moveFile]::[File moved successfully]
+
+```c
+void buatLog(const char *status, const char *activity, const char *info) {
+    FILE *log_file = fopen("/path/to/logs-fuse.log", "a");
+    if (log_file == NULL) {
+        perror("Error opening log file");
+        return;
+    }
+
+    time_t now = time(NULL);
+    struct tm *local_time = localtime(&now);
+    char timestamp[20];
+    strftime(timestamp, sizeof(timestamp), "%d/%m/%Y-%H:%M:%S", local_time);
+
+    fprintf(log_file, "[%s]::%s::[%s]::[%s]\n", status, timestamp, activity, info);
+    fclose(log_file);
+}
+```
+Fungsi pembuatan log sama seperti biasanya.
+### Kendala
+Kendala ada pada error terhadap interaksi fuse dan juga vm yang saya gunakan. 
+
+### Revisi
+Tidak ada revisi
 
 ## Soal 3
 ## Archeology.c
