@@ -1,4 +1,274 @@
 # Sisop-4-2024-MH-IT06
+
+## Soal 1
+## inikaryakita.c
+```c
+static int xmp_getattr(const char *path, struct stat *stbuf)
+{
+    char full_path[PATH_MAX];
+    snprintf(full_path, sizeof(full_path), "/home/shittim/Sisop4/portofolio/%s", path);
+    int res = lstat(full_path, stbuf);
+    if (res == -1) return -errno;
+    return 0;
+}
+```
+-  Fungsi xmp_getattr digunakan untuk mengambil atribut atau informasi file dari jalur relatif yang diberikan
+-  Menggabungkannya dengan direktori dasar yang telah ditentukan
+-  Mengisi struktur stat dengan informasi tersebut
+
+```c
+static int xmp_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi)
+{
+    char full_path[PATH_MAX];
+    snprintf(full_path, sizeof(full_path), "/home/shittim/Sisop4/portofolio/%s", path);
+    DIR *dp;
+    struct dirent *de;
+    (void) offset;
+    (void) fi;
+
+    dp = opendir(full_path);
+    if (dp == NULL) return -errno;
+
+    while ((de = readdir(dp)) != NULL) {
+        struct stat st;
+        memset(&st, 0, sizeof(st));
+        st.st_ino = de->d_ino;
+        st.st_mode = de->d_type << 12;
+        if (filler(buf, de->d_name, &st, 0)) break;
+    }
+    closedir(dp);
+    return 0;
+}
+```
+- Fungsi xmp_readdir digunakan untuk membaca isi direktori yang jalurnya diberikan relatif,menggabungkannya dengan direktori dasar yang telah ditentukan
+- Membuka direktori tersebut
+- Membaca setiap entri direktori
+- Mengisi buffer dengan nama entri direktori dan informasi terkait menggunakan fungsi filler.
+
+```c
+static int xmp_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
+{
+    char full_path[PATH_MAX];
+    snprintf(full_path, sizeof(full_path), "/home/shittim/Sisop4/portofolio/%s", path);
+    int fd;
+    int res;
+    (void) fi;
+
+    fd = open(full_path, O_RDONLY);
+    if (fd == -1) return -errno;
+
+    const char *filename = strrchr(path, '/') ? strrchr(path, '/') + 1 : path;
+    if (strstr(filename, "test") == filename && strstr(filename, ".txt") == filename + strlen(filename) - 4) {
+ 
+        char *file_buf = malloc(size);
+        if (file_buf == NULL) {
+            close(fd);
+            return -ENOMEM;
+        }
+
+        res = pread(fd, file_buf, size, 0);
+        if (res == -1) {
+            free(file_buf);
+            close(fd);
+            return -errno;
+        }
+
+
+        size_t file_size = res;
+        for (size_t i = 0; i < file_size; ++i) {
+            buf[i] = file_buf[file_size - 1 - i];
+        }
+
+
+        if (file_size > size) {
+            file_size = size;
+        }
+
+        free(file_buf);
+        close(fd);
+        return file_size;
+    } else {
+
+        res = pread(fd, buf, size, offset);
+        if (res == -1) res = -errno;
+
+        close(fd);
+        return res;
+    }
+}
+```
+- Menggabungkan jalur dasar dengan path untuk mendapatkan jalur lengkap.
+- Membuka berkas dalam mode baca saja dengan open(full_path, O_RDONLY);
+- Mendapatkan nama berkas dari path dengan strrchr(path, '/').
+- Memeriksa apakah nama berkas diawali dengan "test" dan diakhiri dengan ".txt".
+- Jika berkas sesuai kriteria, alokasi buffer untuk membaca isi berkas (file_buf).
+    - Membaca isi berkas ke dalam file_buf menggunakan pread.
+    - Jika operasi baca gagal, membersihkan dan mengembalikan kesalahan.
+    - Membalik isi file_buf ke dalam buf (buffer yang diberikan).
+    - Mengembalikan ukuran data yang dibalik.
+- Jika berkas tidak sesuai kriteria, membaca isi berkas secara normal ke dalam buf menggunakan pread.
+- Mengembalikan hasil operasi baca atau kesalahan jika terjadi.
+- Berkas selalu ditutup setelah operasi selesai.
+- Memori yang dialokasikan untuk file_buf dibebaskan setelah digunakan.
+
+```c
+int add_watermark(const char *filepath)
+{
+    char command[1024];
+    snprintf(command, sizeof(command), "convert '%s' -gravity South -pointsize 80 -fill white -annotate +0+100 'inikaryakita.id' '%s'", filepath, filepath);
+    int res = system(command);
+    if (res != 0) {
+        fprintf(stderr, "Error adding watermark to file: %s\n", filepath);
+        return -1;
+    }
+    return 0;
+}
+```
+- Mendefinisikan buffer command dengan ukuran 1024 karakter untuk menyimpan perintah sistem.
+- Menggunakan snprintf untuk membentuk perintah ImageMagick convert yang akan menambahkan watermark ke gambar.
+- Menjalankan perintah yang telah dibentuk menggunakan fungsi system.
+
+```c
+static int xmp_rename(const char *from, const char *to)
+{
+    char full_from[PATH_MAX];
+    char full_to[PATH_MAX];
+    snprintf(full_from, sizeof(full_from), "/home/shittim/Sisop4/portofolio/%s", from);
+    snprintf(full_to, sizeof(full_to), "/home/shittim/Sisop4/portofolio/%s", to);
+    int res;
+
+    if (strstr(to, "wm") != NULL) {
+
+        res = rename(full_from, full_to);
+        if (res == -1) return -errno;
+        
+
+        res = add_watermark(full_to);
+        if (res != 0) return -errno;
+    } else {
+        res = rename(full_from, full_to);
+        if (res == -1) return -errno;
+    }
+    return res;
+}
+```
+- Mendefinisikan buffer full_from dan full_to dengan ukuran PATH_MAX untuk menyimpan path lengkap file asli dan file tujuan.
+- Menggunakan snprintf untuk membentuk path lengkap dari file asli (full_from) dan file tujuan (full_to).
+- Mengecek apakah string to mengandung substring "wm":
+- Jika ya:
+    - Memanggil fungsi rename untuk mengganti nama file dari full_from ke full_to.
+    - Memanggil fungsi add_watermark untuk menambahkan watermark ke file yang baru saja diganti namanya.
+- Jika tidak:
+    - Memanggil fungsi rename untuk mengganti nama file dari full_from ke full_to.
+
+```c
+static int xmp_mkdir(const char *path, mode_t mode)
+{
+    char full_path[PATH_MAX];
+    snprintf(full_path, sizeof(full_path), "/home/shittim/Sisop4/portofolio/%s", path);
+    int res;
+    res = mkdir(full_path, mode);
+    if (res == -1) return -errno;
+    return 0;
+}
+```
+- Mendefinisikan buffer full_path dengan ukuran PATH_MAX untuk menyimpan path lengkap direktori baru.
+- Menggunakan snprintf untuk membentuk path lengkap dari direktori baru (full_path).
+- Memanggil fungsi mkdir untuk membuat direktori baru dengan path lengkap dan mode yang diberikan.
+
+```c
+static int xmp_unlink(const char *path)
+{
+    char full_path[PATH_MAX];
+    snprintf(full_path, sizeof(full_path), "/home/shittim/Sisop4/portofolio/%s", path);
+    int res;
+    res = unlink(full_path);
+    if (res == -1) return -errno;
+    return 0;
+}
+```
+- Menggunakan snprintf untuk membentuk path lengkap dari file yang akan dihapus (full_path).
+- Memanggil fungsi unlink untuk menghapus file dengan path lengkap yang telah dibentuk
+
+```c
+static int xmp_rmdir(const char *path)
+{
+    char full_path[PATH_MAX];
+    snprintf(full_path, sizeof(full_path), "/home/shittim/Sisop4/portofolio/%s", path);
+    int res;
+    res = rmdir(full_path);
+    if (res == -1) return -errno;
+    return 0;
+}
+```
+- Menggunakan snprintf untuk membentuk path lengkap dari direktori yang akan dihapus (full_path).
+- Memanggil fungsi rmdir untuk menghapus direktori kosong dengan path lengkap yang telah dibentuk.
+
+```c
+static int xmp_create(const char *path, mode_t mode, struct fuse_file_info *fi)
+{
+    char full_path[PATH_MAX];
+    snprintf(full_path, sizeof(full_path), "/home/shittim/Sisop4/portofolio/%s", path);
+    int fd;
+    fd = open(full_path, fi->flags, mode);
+    if (fd == -1) return -errno;
+    fi->fh = fd;
+    return 0;
+}
+```
+- Menggunakan snprintf untuk membentuk path lengkap dari file yang akan dibuat (full_path).
+- Memanggil fungsi open untuk membuat file baru dengan path lengkap yang telah dibentuk, serta mode dan flag yang diberikan.
+
+```c
+static int xmp_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
+{
+    int res;
+    res = pwrite(fi->fh, buf, size, offset);
+    if (res == -1) return -errno;
+    return res;
+}
+```
+- Memanggil fungsi pwrite untuk menulis size byte data dari buffer buf ke file pada offset yang ditentukan.
+
+```c
+static int xmp_chmod(const char *path, mode_t mode)
+{
+    char full_path[PATH_MAX];
+    snprintf(full_path, sizeof(full_path), "/home/shittim/Sisop4/portofolio/%s", path);
+    int res;
+    res = chmod(full_path, mode);
+    if (res == -1) return -errno;
+    return 0;
+}
+```
+- Menggunakan snprintf untuk membentuk path lengkap dari file atau direktori yang izinnya akan diubah (full_path).
+- Memanggil fungsi chmod untuk mengubah izin dari file atau direktori dengan path lengkap yang telah dibentuk.
+
+```c
+static struct fuse_operations xmp_oper = {
+    .getattr = xmp_getattr,
+    .readdir = xmp_readdir,
+    .read = xmp_read,
+    .rename = xmp_rename,
+    .mkdir = xmp_mkdir,
+    .unlink = xmp_unlink,
+    .rmdir = xmp_rmdir,
+    .create = xmp_create,
+    .write = xmp_write,
+    .chmod = xmp_chmod,
+};
+```
+- Struktur fuse_operations digunakan untuk mendefinisikan fungsi-fungsi callback yang diimplementasikan dalam sistem berkas FUSE (Filesystem in Userspace).
+
+```c
+int main(int argc, char *argv[])
+{
+    umask(0);
+    return fuse_main(argc, argv, &xmp_oper, NULL);
+}
+```
+- Fungsi ini mengatur mask izin file dan kemudian memanggil fuse_main untuk menjalankan sistem berkas FUSE dengan operasi yang telah ditentukan.
+
 ## Soal 3
 ## Archeology.c
 ```
